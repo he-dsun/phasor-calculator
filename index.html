@@ -104,6 +104,13 @@
     min-height: 36px;
     letter-spacing: 1px;
     transition: font-size 0.15s;
+    /* Input overrides — seamless with background */
+    background: transparent;
+    border: none;
+    outline: none;
+    caret-color: #818cf8;
+    width: 100%;
+    font-family: inherit;
   }
   .expression.long {
     font-size: 20px;
@@ -243,7 +250,9 @@
   </div>
 
   <div class="display" id="display">
-    <div class="expression" id="expression">0</div>
+    <input class="expression" id="expression" type="text" value="0"
+           autocomplete="off" autocorrect="off" autocapitalize="off"
+           spellcheck="false" enterkeyhint="done">
     <div class="result-area" id="resultArea">
       <div class="result-line" id="polarResult"></div>
       <div class="result-line" id="rectResult"></div>
@@ -334,7 +343,6 @@ class Complex {
     const b = this.im;
     if (Math.abs(b) < 1e-12) return `${fmt(a)}`;
     if (Math.abs(a) < 1e-12) {
-      // Pure imaginary: always output as "Nj" so tokenizer can re-parse it
       if (b < 0) return `−${fmt(Math.abs(b))}j`;
       return `${fmt(b)}j`;
     }
@@ -348,9 +356,7 @@ function fmt(n) {
   if (!isFinite(n)) return '∞';
   const abs = Math.abs(n);
   if (abs < 1e-12) return '0';
-  // Use toPrecision for meaningful digits, then strip trailing zeros
   let s = parseFloat(n.toPrecision(10)).toString();
-  // For very large or very small, use toExponential-like compact form
   if (abs >= 1e12 || (abs < 1e-9 && abs > 0)) {
     s = parseFloat(n.toPrecision(6)).toString();
   }
@@ -379,13 +385,11 @@ function tokenize(input) {
   while (i < input.length) {
     const ch = input[i];
 
-    // Skip whitespace and ° symbol
     if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '°') {
       i++;
       continue;
     }
 
-    // Number: digits with optional decimal
     if (/\d/.test(ch) || (ch === '.' && i + 1 < input.length && /\d/.test(input[i + 1]))) {
       let numStr = '';
       while (i < input.length && /\d/.test(input[i])) numStr += input[i++];
@@ -394,7 +398,6 @@ function tokenize(input) {
         i++;
         while (i < input.length && /\d/.test(input[i])) numStr += input[i++];
       }
-      // Check for following 'j' (imaginary suffix)
       if (i < input.length && (input[i] === 'j' || input[i] === 'J')) {
         tokens.push({ type: TokenType.IMAGINARY, value: parseFloat(numStr) });
         i++;
@@ -404,17 +407,14 @@ function tokenize(input) {
       continue;
     }
 
-    // Standalone 'j'
     if (ch === 'j' || ch === 'J') {
       tokens.push({ type: TokenType.IMAGINARY, value: 1 });
       i++;
       continue;
     }
 
-    // Angle symbol
     if (ch === '∠') { tokens.push({ type: TokenType.ANGLE }); i++; continue; }
 
-    // Operators and symbols
     if (ch === '+') { tokens.push({ type: TokenType.PLUS }); i++; continue; }
     if (ch === '−' || ch === '-') { tokens.push({ type: TokenType.MINUS }); i++; continue; }
     if (ch === '×' || ch === '*') { tokens.push({ type: TokenType.MUL }); i++; continue; }
@@ -422,7 +422,6 @@ function tokenize(input) {
     if (ch === '(') { tokens.push({ type: TokenType.LPAREN }); i++; continue; }
     if (ch === ')') { tokens.push({ type: TokenType.RPAREN }); i++; continue; }
 
-    // Unknown character, skip
     i++;
   }
   tokens.push({ type: TokenType.EOF });
@@ -470,7 +469,6 @@ class Parser {
   }
 
   parseFactor() {
-    // Unary minus
     if (this.peek().type === TokenType.MINUS) {
       this.consume();
       const val = this.parseFactor();
@@ -483,8 +481,6 @@ class Parser {
     const left = this.parseAtom();
     if (this.peek().type === TokenType.ANGLE) {
       this.consume();
-      // Use parseFactor() so unary minus (negative angle) is supported
-      // e.g., "1∠-30" → angle = -30°
       const right = this.parseFactor();
       const mag = left.magnitude();
       const angleDeg = right.re;
@@ -541,10 +537,9 @@ function tokenLabel(token) {
 }
 
 // ============================================================
-//  Calculator State & UI Logic
+//  Calculator State & UI Logic  (cursor-aware)
 // ============================================================
-let expression = '';
-let lastResult = null;    // Complex result from last successful calculation
+let lastResult = null;
 let justCalculated = false;
 let errorShown = false;
 
@@ -552,54 +547,111 @@ const exprEl = document.getElementById('expression');
 const polarEl = document.getElementById('polarResult');
 const rectEl = document.getElementById('rectResult');
 
+/** Insert text at cursor position, replace any selection, advance cursor */
+function insertAtCursor(text) {
+  const input = exprEl;
+  const start = input.selectionStart;
+  const end = input.selectionEnd;
+  input.value = input.value.substring(0, start) + text + input.value.substring(end);
+  const newPos = start + text.length;
+  input.setSelectionRange(newPos, newPos);
+  adjustFontSize();
+  input.focus();
+}
+
 function press(key) {
+  const input = exprEl;
+
   if (key === 'C') {
-    expression = '';
+    input.value = '0';
+    input.setSelectionRange(1, 1);
     lastResult = null;
     justCalculated = false;
     errorShown = false;
-  } else if (key === '⌫') {
+    input.focus();
+    updateDisplay();
+    return;
+  }
+
+  if (key === '⌫') {
     if (justCalculated) {
-      // After calculation, backspace clears result and starts fresh
-      expression = '';
+      input.value = '0';
+      input.setSelectionRange(1, 1);
       lastResult = null;
       justCalculated = false;
       errorShown = false;
     } else {
-      expression = expression.slice(0, -1);
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      if (start !== end) {
+        // Delete selected text
+        input.value = input.value.substring(0, start) + input.value.substring(end);
+        input.setSelectionRange(start, start);
+      } else if (start > 0) {
+        // Delete character before cursor
+        input.value = input.value.substring(0, start - 1) + input.value.substring(start);
+        input.setSelectionRange(start - 1, start - 1);
+      }
+      if (input.value === '') {
+        input.value = '0';
+        input.setSelectionRange(1, 1);
+      }
     }
-  } else if (key === '=') {
+    input.focus();
+    updateDisplay();
+    return;
+  }
+
+  if (key === '=') {
     evaluate();
     return;
-  } else {
-    // Append to expression
-    if (justCalculated) {
-      if (isOperator(key)) {
-        // Chain: start from last result (rectangular form)
-        expression = lastResult !== null ? lastResult.toRectString() : '';
-        expression += key;
-        lastResult = null;
-        justCalculated = false;
-        errorShown = false;
-      } else {
-        // Start fresh
-        expression = (key === '.') ? '0.' : key;
-        lastResult = null;
-        justCalculated = false;
-        errorShown = false;
-      }
+  }
+
+  // --- Append / Insert ---
+  if (justCalculated) {
+    if (isOperator(key)) {
+      // Chain from previous result
+      input.value = lastResult !== null ? lastResult.toRectString() : '0';
+      input.setSelectionRange(input.value.length, input.value.length);
+      insertAtCursor(key);
+      lastResult = null;
+      justCalculated = false;
+      errorShown = false;
+      updateDisplay();
+      return;
     } else {
-      if (key === '.' && (expression === '' || expression === '0')) {
-        expression = '0.';
-      } else if (expression === '0' && !isOperator(key) && key !== '.') {
-        expression = key;
-      } else {
-        expression += key;
-      }
+      // Start fresh expression
+      input.value = '';
+      input.setSelectionRange(0, 0);
+      lastResult = null;
+      justCalculated = false;
+      errorShown = false;
     }
   }
+
+  // Auto 1∠: if ∠ is at start or follows an operator / (, prepend "1"
+  if (key === '∠') {
+    const pos = input.selectionStart;
+    const before = input.value.substring(0, pos);
+    if (pos === 0 || /[+\-−×÷(]$/.test(before)) {
+      insertAtCursor('1∠');
+      updateDisplay();
+      return;
+    }
+  }
+
+  // Replace leading "0" with a new digit or ∠
+  const pos = input.selectionStart;
+  if (input.value === '0' && pos === 1 && !isOperator(key) && key !== '.') {
+    input.value = key;
+    input.setSelectionRange(key.length, key.length);
+    adjustFontSize();
+    input.focus();
+  } else {
+    insertAtCursor(key);
+  }
+
   updateDisplay();
-  highlightOperator();
 }
 
 function isOperator(key) {
@@ -607,23 +659,26 @@ function isOperator(key) {
 }
 
 function evaluate() {
-  if (!expression.trim()) {
+  const expr = exprEl.value.trim();
+  if (!expr) {
     updateDisplay();
     return;
   }
 
   try {
-    const tokens = tokenize(expression);
+    const tokens = tokenize(expr);
     const parser = new Parser(tokens);
     const result = parser.parse();
     lastResult = result;
     justCalculated = true;
     errorShown = false;
 
-    // Update expression display to show the polar form of result
-    expression = result.toPolarString();
+    // Show polar result in the input, cursor at end
+    exprEl.value = result.toPolarString();
+    exprEl.setSelectionRange(exprEl.value.length, exprEl.value.length);
+    adjustFontSize();
 
-    // Show results
+    // Show both forms in result area
     polarEl.innerHTML = '<span class="label">极坐标</span><span class="value">' + result.toPolarString() + '</span>';
     polarEl.classList.remove('error');
     rectEl.innerHTML = '<span class="label">直角坐标</span><span class="value">' + result.toRectString() + '</span>';
@@ -637,31 +692,24 @@ function evaluate() {
     polarEl.classList.add('error');
     rectEl.innerHTML = '';
   }
-  updateExpressionDisplay();
-  highlightOperator();
 }
 
 function updateDisplay() {
-  updateExpressionDisplay();
+  adjustFontSize();
   if (!justCalculated && !errorShown) {
     polarEl.innerHTML = '';
     rectEl.innerHTML = '';
   }
 }
 
-function updateExpressionDisplay() {
-  let text = expression;
-  if (text === '') text = '0';
-  exprEl.textContent = text;
-
-  // Adjust font size for long expressions
+function adjustFontSize() {
+  const len = exprEl.value.length;
   exprEl.classList.remove('long', 'xlong');
-  if (text.length > 18) exprEl.classList.add('xlong');
-  else if (text.length > 11) exprEl.classList.add('long');
+  if (len > 18) exprEl.classList.add('xlong');
+  else if (len > 11) exprEl.classList.add('long');
 }
 
 function highlightOperator() {
-  // Remove highlight from all operator buttons
   document.querySelectorAll('.btn-op').forEach(b => b.classList.remove('selected'));
 }
 
@@ -672,23 +720,32 @@ function escapeHtml(str) {
 }
 
 // ============================================================
-//  Keyboard Support (for desktop usage)
+//  Input event: manual keyboard typing resets calc state
 // ============================================================
-document.addEventListener('keydown', function(e) {
-  const key = e.key;
+exprEl.addEventListener('input', function() {
+  justCalculated = false;
+  errorShown = false;
+  lastResult = null;
+  updateDisplay();
+});
 
-  if (key === 'Escape' || key === 'Delete') { press('C'); return; }
-  if (key === 'Backspace') { press('⌫'); e.preventDefault(); return; }
-  if (key === 'Enter' || key === '=') { press('='); e.preventDefault(); return; }
-  if (key === '(' || key === ')') { press(key); return; }
-  if (key === '+') { press('+'); return; }
-  if (key === '-') { press('−'); e.preventDefault(); return; }
-  if (key === '*') { press('×'); e.preventDefault(); return; }
-  if (key === '/') { press('÷'); e.preventDefault(); return; }
-  if (key === 'j' || key === 'J') { press('j'); return; }
-  if (key === '\\' || key === '|') { press('∠'); return; }
-  if (key >= '0' && key <= '9') { press(key); return; }
-  if (key === '.') { press('.'); return; }
+// ============================================================
+//  Enter key → evaluate
+// ============================================================
+exprEl.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    evaluate();
+  }
+});
+
+// ============================================================
+//  Focus "0" → select to end for easy replacement
+// ============================================================
+exprEl.addEventListener('focus', function() {
+  if (exprEl.value === '0') {
+    exprEl.setSelectionRange(1, 1);
+  }
 });
 
 // ============================================================
@@ -700,9 +757,7 @@ updateDisplay();
 //  Service Worker Registration (PWA offline support)
 // ============================================================
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {
-    // SW registration fails on file:// protocol — app still works
-  });
+  navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 </script>
 
