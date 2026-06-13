@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>相量计算器</title>
+
+<!-- PWA Manifest -->
+<link rel="manifest" href="./manifest.json">
+<meta name="theme-color" content="#1e293b">
+
+<!-- iOS Safari: "Add to Home Screen" -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="相量计算器">
+<link rel="apple-touch-icon" href="./icon.svg">
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="./icon.svg">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0f172a;
+    --calc-bg: #1e293b;
+    --display-bg: #0f172a;
+    --num-btn: #334155;
+    --num-hover: #3b4f6b;
+    --op-btn: #f59e0b;
+    --op-hover: #fbbf24;
+    --func-btn: #475569;
+    --func-hover: #52647c;
+    --angle-btn: #6366f1;
+    --angle-hover: #818cf8;
+    --eq-btn: #10b981;
+    --eq-hover: #34d399;
+    --text: #f1f5f9;
+    --text-secondary: #94a3b8;
+  }
+
+  body {
+    background: var(--bg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    padding: 16px;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .calculator {
+    width: 100%;
+    max-width: 400px;
+    background: var(--calc-bg);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  }
+
+  /* Header */
+  .header {
+    padding: 16px 20px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .header-icon {
+    width: 28px; height: 28px;
+    background: var(--angle-btn);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    color: #fff;
+  }
+  .header-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+  }
+
+  /* Display */
+  .display {
+    padding: 16px 20px 20px;
+    min-height: 130px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+  }
+
+  .expression {
+    font-size: 28px;
+    font-weight: 400;
+    color: var(--text);
+    text-align: right;
+    word-break: break-all;
+    line-height: 1.3;
+    min-height: 36px;
+    letter-spacing: 1px;
+    transition: font-size 0.15s;
+  }
+  .expression.long {
+    font-size: 20px;
+  }
+  .expression.xlong {
+    font-size: 16px;
+  }
+
+  .result-area {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .result-line {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    font-size: 15px;
+    color: var(--text);
+    min-height: 22px;
+    font-variant-numeric: tabular-nums;
+  }
+  .result-line .label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+    padding: 2px 6px;
+    border-radius: 4px;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .result-line .value {
+    font-family: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+  }
+  .result-line.error .value {
+    color: #f87171;
+    font-family: inherit;
+    font-size: 14px;
+  }
+
+  /* Buttons */
+  .buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    padding: 12px 16px 16px;
+  }
+
+  .btn {
+    height: 56px;
+    border: none;
+    border-radius: 14px;
+    font-size: 20px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: transform 0.08s, background-color 0.12s;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn:active {
+    transform: scale(0.94);
+  }
+
+  /* Number buttons */
+  .btn-num {
+    background: var(--num-btn);
+    color: var(--text);
+  }
+  .btn-num:active { background: var(--num-hover); }
+
+  /* Operator buttons */
+  .btn-op {
+    background: var(--op-btn);
+    color: #1c1917;
+    font-size: 22px;
+  }
+  .btn-op:active { background: var(--op-hover); }
+  .btn-op.selected {
+    background: #fff;
+    color: #1c1917;
+  }
+
+  /* Function buttons */
+  .btn-func {
+    background: var(--func-btn);
+    color: var(--text);
+    font-size: 17px;
+  }
+  .btn-func:active { background: var(--func-hover); }
+
+  /* Angle button */
+  .btn-angle {
+    background: var(--angle-btn);
+    color: #fff;
+    font-size: 22px;
+    font-weight: 600;
+  }
+  .btn-angle:active { background: var(--angle-hover); }
+
+  /* Equal button */
+  .btn-eq {
+    background: var(--eq-btn);
+    color: #fff;
+    font-size: 24px;
+    font-weight: 700;
+    grid-column: span 3;
+  }
+  .btn-eq:active { background: var(--eq-hover); }
+
+  /* Footer */
+  .footer {
+    text-align: center;
+    padding: 0 20px 16px;
+    font-size: 11px;
+    color: rgba(255, 255, 255, 0.15);
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<div class="calculator">
+  <div class="header">
+    <div class="header-icon">⚡</div>
+    <div class="header-title">相量计算器</div>
+  </div>
+
+  <div class="display" id="display">
+    <div class="expression" id="expression">0</div>
+    <div class="result-area" id="resultArea">
+      <div class="result-line" id="polarResult"></div>
+      <div class="result-line" id="rectResult"></div>
+    </div>
+  </div>
+
+  <div class="buttons">
+    <button class="btn btn-func" onclick="press('C')">C</button>
+    <button class="btn btn-func" onclick="press('⌫')" style="font-size:18px">⌫</button>
+    <button class="btn btn-func" onclick="press('(')">(</button>
+    <button class="btn btn-func" onclick="press(')')">)</button>
+
+    <button class="btn btn-num" onclick="press('7')">7</button>
+    <button class="btn btn-num" onclick="press('8')">8</button>
+    <button class="btn btn-num" onclick="press('9')">9</button>
+    <button class="btn btn-op" onclick="press('÷')">÷</button>
+
+    <button class="btn btn-num" onclick="press('4')">4</button>
+    <button class="btn btn-num" onclick="press('5')">5</button>
+    <button class="btn btn-num" onclick="press('6')">6</button>
+    <button class="btn btn-op" onclick="press('×')">×</button>
+
+    <button class="btn btn-num" onclick="press('1')">1</button>
+    <button class="btn btn-num" onclick="press('2')">2</button>
+    <button class="btn btn-num" onclick="press('3')">3</button>
+    <button class="btn btn-op" onclick="press('−')">−</button>
+
+    <button class="btn btn-angle" onclick="press('∠')">∠</button>
+    <button class="btn btn-num" onclick="press('0')">0</button>
+    <button class="btn btn-num" onclick="press('.')">.</button>
+    <button class="btn btn-op" onclick="press('+')">+</button>
+
+    <button class="btn btn-angle" onclick="press('j')" style="font-size:18px">j</button>
+    <button class="btn btn-eq" onclick="press('=')">=</button>
+  </div>
+
+  <div class="footer">Phasor Calculator · 电路分析</div>
+</div>
+
+<script>
+// ============================================================
+//  Complex Number Engine
+// ============================================================
+class Complex {
+  constructor(re, im) {
+    this.re = re;
+    this.im = im;
+  }
+
+  static fromPolar(mag, angleDeg) {
+    const rad = angleDeg * Math.PI / 180;
+    return new Complex(mag * Math.cos(rad), mag * Math.sin(rad));
+  }
+
+  add(o) { return new Complex(this.re + o.re, this.im + o.im); }
+  sub(o) { return new Complex(this.re - o.re, this.im - o.im); }
+  mul(o) {
+    return new Complex(
+      this.re * o.re - this.im * o.im,
+      this.re * o.im + this.im * o.re
+    );
+  }
+  div(o) {
+    const d = o.re * o.re + o.im * o.im;
+    if (Math.abs(d) < 1e-15) throw new Error('除零错误');
+    return new Complex(
+      (this.re * o.re + this.im * o.im) / d,
+      (this.im * o.re - this.re * o.im) / d
+    );
+  }
+
+  magnitude() {
+    return Math.sqrt(this.re * this.re + this.im * this.im);
+  }
+
+  angleDeg() {
+    return Math.atan2(this.im, this.re) * 180 / Math.PI;
+  }
+
+  toPolarString() {
+    const mag = this.magnitude();
+    const ang = this.angleDeg();
+    return `${fmt(mag)}∠${fmt(ang)}°`;
+  }
+
+  toRectString() {
+    const a = this.re;
+    const b = this.im;
+    if (Math.abs(b) < 1e-12) return `${fmt(a)}`;
+    if (Math.abs(a) < 1e-12) {
+      // Pure imaginary: always output as "Nj" so tokenizer can re-parse it
+      if (b < 0) return `−${fmt(Math.abs(b))}j`;
+      return `${fmt(b)}j`;
+    }
+    const sign = b < 0 ? ' − ' : ' + ';
+    return `${fmt(a)}${sign}${fmt(Math.abs(b))}j`;
+  }
+}
+
+/** Format a number: trim trailing zeros, keep up to 6 significant digits */
+function fmt(n) {
+  if (!isFinite(n)) return '∞';
+  const abs = Math.abs(n);
+  if (abs < 1e-12) return '0';
+  // Use toPrecision for meaningful digits, then strip trailing zeros
+  let s = parseFloat(n.toPrecision(10)).toString();
+  // For very large or very small, use toExponential-like compact form
+  if (abs >= 1e12 || (abs < 1e-9 && abs > 0)) {
+    s = parseFloat(n.toPrecision(6)).toString();
+  }
+  return s;
+}
+
+// ============================================================
+//  Tokenizer
+// ============================================================
+const TokenType = {
+  NUMBER: 'NUMBER',
+  IMAGINARY: 'IMAGINARY',
+  ANGLE: 'ANGLE',
+  PLUS: 'PLUS',
+  MINUS: 'MINUS',
+  MUL: 'MUL',
+  DIV: 'DIV',
+  LPAREN: 'LPAREN',
+  RPAREN: 'RPAREN',
+  EOF: 'EOF',
+};
+
+function tokenize(input) {
+  const tokens = [];
+  let i = 0;
+  while (i < input.length) {
+    const ch = input[i];
+
+    // Skip whitespace and ° symbol
+    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '°') {
+      i++;
+      continue;
+    }
+
+    // Number: digits with optional decimal
+    if (/\d/.test(ch) || (ch === '.' && i + 1 < input.length && /\d/.test(input[i + 1]))) {
+      let numStr = '';
+      while (i < input.length && /\d/.test(input[i])) numStr += input[i++];
+      if (i < input.length && input[i] === '.') {
+        numStr += '.';
+        i++;
+        while (i < input.length && /\d/.test(input[i])) numStr += input[i++];
+      }
+      // Check for following 'j' (imaginary suffix)
+      if (i < input.length && (input[i] === 'j' || input[i] === 'J')) {
+        tokens.push({ type: TokenType.IMAGINARY, value: parseFloat(numStr) });
+        i++;
+      } else {
+        tokens.push({ type: TokenType.NUMBER, value: parseFloat(numStr) });
+      }
+      continue;
+    }
+
+    // Standalone 'j'
+    if (ch === 'j' || ch === 'J') {
+      tokens.push({ type: TokenType.IMAGINARY, value: 1 });
+      i++;
+      continue;
+    }
+
+    // Angle symbol
+    if (ch === '∠') { tokens.push({ type: TokenType.ANGLE }); i++; continue; }
+
+    // Operators and symbols
+    if (ch === '+') { tokens.push({ type: TokenType.PLUS }); i++; continue; }
+    if (ch === '−' || ch === '-') { tokens.push({ type: TokenType.MINUS }); i++; continue; }
+    if (ch === '×' || ch === '*') { tokens.push({ type: TokenType.MUL }); i++; continue; }
+    if (ch === '÷' || ch === '/') { tokens.push({ type: TokenType.DIV }); i++; continue; }
+    if (ch === '(') { tokens.push({ type: TokenType.LPAREN }); i++; continue; }
+    if (ch === ')') { tokens.push({ type: TokenType.RPAREN }); i++; continue; }
+
+    // Unknown character, skip
+    i++;
+  }
+  tokens.push({ type: TokenType.EOF });
+  return tokens;
+}
+
+// ============================================================
+//  Recursive Descent Parser
+// ============================================================
+class Parser {
+  constructor(tokens) {
+    this.tokens = tokens;
+    this.pos = 0;
+  }
+
+  peek() { return this.tokens[this.pos]; }
+  consume() { return this.tokens[this.pos++]; }
+
+  parse() {
+    const result = this.parseExpression();
+    if (this.peek().type !== TokenType.EOF) {
+      throw new Error('表达式错误：多余的 "' + tokenLabel(this.peek()) + '"');
+    }
+    return result;
+  }
+
+  parseExpression() {
+    let left = this.parseTerm();
+    while (this.peek().type === TokenType.PLUS || this.peek().type === TokenType.MINUS) {
+      const op = this.consume().type;
+      const right = this.parseTerm();
+      left = (op === TokenType.PLUS) ? left.add(right) : left.sub(right);
+    }
+    return left;
+  }
+
+  parseTerm() {
+    let left = this.parseFactor();
+    while (this.peek().type === TokenType.MUL || this.peek().type === TokenType.DIV) {
+      const op = this.consume().type;
+      const right = this.parseFactor();
+      left = (op === TokenType.MUL) ? left.mul(right) : left.div(right);
+    }
+    return left;
+  }
+
+  parseFactor() {
+    // Unary minus
+    if (this.peek().type === TokenType.MINUS) {
+      this.consume();
+      const val = this.parseFactor();
+      return new Complex(-val.re, -val.im);
+    }
+    return this.parsePolar();
+  }
+
+  parsePolar() {
+    const left = this.parseAtom();
+    if (this.peek().type === TokenType.ANGLE) {
+      this.consume();
+      // Use parseFactor() so unary minus (negative angle) is supported
+      // e.g., "1∠-30" → angle = -30°
+      const right = this.parseFactor();
+      const mag = left.magnitude();
+      const angleDeg = right.re;
+      return Complex.fromPolar(mag, angleDeg);
+    }
+    return left;
+  }
+
+  parseAtom() {
+    const token = this.peek();
+
+    if (token.type === TokenType.NUMBER) {
+      this.consume();
+      return new Complex(token.value, 0);
+    }
+
+    if (token.type === TokenType.IMAGINARY) {
+      this.consume();
+      return new Complex(0, token.value);
+    }
+
+    if (token.type === TokenType.LPAREN) {
+      this.consume();
+      const result = this.parseExpression();
+      if (this.peek().type !== TokenType.RPAREN) {
+        throw new Error('缺少右括号 ")"');
+      }
+      this.consume();
+      return result;
+    }
+
+    if (token.type === TokenType.EOF) {
+      throw new Error('表达式不完整');
+    }
+
+    throw new Error('意外的符号 "' + tokenLabel(token) + '"');
+  }
+}
+
+function tokenLabel(token) {
+  switch (token.type) {
+    case TokenType.NUMBER: return token.value.toString();
+    case TokenType.IMAGINARY: return 'j' + (token.value !== 1 ? token.value : '');
+    case TokenType.ANGLE: return '∠';
+    case TokenType.PLUS: return '+';
+    case TokenType.MINUS: return '−';
+    case TokenType.MUL: return '×';
+    case TokenType.DIV: return '÷';
+    case TokenType.LPAREN: return '(';
+    case TokenType.RPAREN: return ')';
+    case TokenType.EOF: return '表达式结尾';
+    default: return '?';
+  }
+}
+
+// ============================================================
+//  Calculator State & UI Logic
+// ============================================================
+let expression = '';
+let lastResult = null;    // Complex result from last successful calculation
+let justCalculated = false;
+let errorShown = false;
+
+const exprEl = document.getElementById('expression');
+const polarEl = document.getElementById('polarResult');
+const rectEl = document.getElementById('rectResult');
+
+function press(key) {
+  if (key === 'C') {
+    expression = '';
+    lastResult = null;
+    justCalculated = false;
+    errorShown = false;
+  } else if (key === '⌫') {
+    if (justCalculated) {
+      // After calculation, backspace clears result and starts fresh
+      expression = '';
+      lastResult = null;
+      justCalculated = false;
+      errorShown = false;
+    } else {
+      expression = expression.slice(0, -1);
+    }
+  } else if (key === '=') {
+    evaluate();
+    return;
+  } else {
+    // Append to expression
+    if (justCalculated) {
+      if (isOperator(key)) {
+        // Chain: start from last result (rectangular form)
+        expression = lastResult !== null ? lastResult.toRectString() : '';
+        expression += key;
+        lastResult = null;
+        justCalculated = false;
+        errorShown = false;
+      } else {
+        // Start fresh
+        expression = (key === '.') ? '0.' : key;
+        lastResult = null;
+        justCalculated = false;
+        errorShown = false;
+      }
+    } else {
+      if (key === '.' && (expression === '' || expression === '0')) {
+        expression = '0.';
+      } else if (expression === '0' && !isOperator(key) && key !== '.') {
+        expression = key;
+      } else {
+        expression += key;
+      }
+    }
+  }
+  updateDisplay();
+  highlightOperator();
+}
+
+function isOperator(key) {
+  return key === '+' || key === '−' || key === '-' || key === '×' || key === '*' || key === '÷' || key === '/';
+}
+
+function evaluate() {
+  if (!expression.trim()) {
+    updateDisplay();
+    return;
+  }
+
+  try {
+    const tokens = tokenize(expression);
+    const parser = new Parser(tokens);
+    const result = parser.parse();
+    lastResult = result;
+    justCalculated = true;
+    errorShown = false;
+
+    // Update expression display to show the polar form of result
+    expression = result.toPolarString();
+
+    // Show results
+    polarEl.innerHTML = '<span class="label">极坐标</span><span class="value">' + result.toPolarString() + '</span>';
+    polarEl.classList.remove('error');
+    rectEl.innerHTML = '<span class="label">直角坐标</span><span class="value">' + result.toRectString() + '</span>';
+    rectEl.classList.remove('error');
+  } catch (e) {
+    lastResult = null;
+    justCalculated = false;
+    errorShown = true;
+    const msg = e.message || '计算错误';
+    polarEl.innerHTML = '<span class="value">' + escapeHtml(msg) + '</span>';
+    polarEl.classList.add('error');
+    rectEl.innerHTML = '';
+  }
+  updateExpressionDisplay();
+  highlightOperator();
+}
+
+function updateDisplay() {
+  updateExpressionDisplay();
+  if (!justCalculated && !errorShown) {
+    polarEl.innerHTML = '';
+    rectEl.innerHTML = '';
+  }
+}
+
+function updateExpressionDisplay() {
+  let text = expression;
+  if (text === '') text = '0';
+  exprEl.textContent = text;
+
+  // Adjust font size for long expressions
+  exprEl.classList.remove('long', 'xlong');
+  if (text.length > 18) exprEl.classList.add('xlong');
+  else if (text.length > 11) exprEl.classList.add('long');
+}
+
+function highlightOperator() {
+  // Remove highlight from all operator buttons
+  document.querySelectorAll('.btn-op').forEach(b => b.classList.remove('selected'));
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ============================================================
+//  Keyboard Support (for desktop usage)
+// ============================================================
+document.addEventListener('keydown', function(e) {
+  const key = e.key;
+
+  if (key === 'Escape' || key === 'Delete') { press('C'); return; }
+  if (key === 'Backspace') { press('⌫'); e.preventDefault(); return; }
+  if (key === 'Enter' || key === '=') { press('='); e.preventDefault(); return; }
+  if (key === '(' || key === ')') { press(key); return; }
+  if (key === '+') { press('+'); return; }
+  if (key === '-') { press('−'); e.preventDefault(); return; }
+  if (key === '*') { press('×'); e.preventDefault(); return; }
+  if (key === '/') { press('÷'); e.preventDefault(); return; }
+  if (key === 'j' || key === 'J') { press('j'); return; }
+  if (key === '\\' || key === '|') { press('∠'); return; }
+  if (key >= '0' && key <= '9') { press(key); return; }
+  if (key === '.') { press('.'); return; }
+});
+
+// ============================================================
+//  Initial state
+// ============================================================
+updateDisplay();
+
+// ============================================================
+//  Service Worker Registration (PWA offline support)
+// ============================================================
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(() => {
+    // SW registration fails on file:// protocol — app still works
+  });
+}
+</script>
+
+</body>
+</html>
